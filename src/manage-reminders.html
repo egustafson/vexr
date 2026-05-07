@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manage Reminders</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f5f5f5;
+      padding: 1.5rem;
+      min-height: 100vh;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+    }
+
+    h1 { font-size: 1.25rem; color: #222; }
+
+    #add-btn {
+      padding: .45rem 1rem;
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: .9rem;
+      cursor: pointer;
+    }
+    #add-btn:hover { background: #2563eb; }
+
+    #empty {
+      text-align: center;
+      color: #888;
+      margin-top: 4rem;
+      font-size: 1rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 2px 12px rgba(0,0,0,.1);
+    }
+
+    th {
+      text-align: left;
+      padding: .65rem .85rem;
+      background: #f0f0f0;
+      font-size: .8rem;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+
+    td {
+      padding: .7rem .85rem;
+      border-top: 1px solid #eee;
+      font-size: .9rem;
+      color: #333;
+    }
+
+    tr:hover td { background: #fafafa; }
+
+    .badge {
+      display: inline-block;
+      padding: .15rem .5rem;
+      border-radius: 999px;
+      font-size: .75rem;
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+    .badge.once { background: #e5e7eb; color: #374151; }
+
+    .actions { display: flex; gap: .5rem; }
+
+    .btn-edit, .btn-delete {
+      padding: .3rem .7rem;
+      border: none;
+      border-radius: 5px;
+      font-size: .82rem;
+      cursor: pointer;
+    }
+    .btn-edit { background: #e0f2fe; color: #0369a1; }
+    .btn-edit:hover { background: #bae6fd; }
+    .btn-delete { background: #fee2e2; color: #b91c1c; }
+    .btn-delete:hover { background: #fecaca; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Manage Reminders</h1>
+    <button id="add-btn">+ New Reminder</button>
+  </header>
+
+  <div id="empty" hidden>No reminders yet. Click "+ New Reminder" to add one.</div>
+  <table id="table" hidden>
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Next Trigger</th>
+        <th>Recurrence</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+
+  <script>
+    const { invoke, window: tauriWindow, webviewWindow } = window.__TAURI__;
+
+    async function load() {
+      const reminders = await invoke('list_reminders');
+      const tbody = document.getElementById('tbody');
+      tbody.innerHTML = '';
+
+      if (reminders.length === 0) {
+        document.getElementById('empty').hidden = false;
+        document.getElementById('table').hidden = true;
+        return;
+      }
+      document.getElementById('empty').hidden = true;
+      document.getElementById('table').hidden = false;
+
+      const fmt = new Intl.DateTimeFormat(undefined, {
+        dateStyle: 'medium', timeStyle: 'short'
+      });
+
+      for (const r of reminders) {
+        const tr = document.createElement('tr');
+        const recLower = (r.recurrence || 'once').toLowerCase();
+        tr.innerHTML = `
+          <td>
+            <strong>${esc(r.title)}</strong>
+            ${r.description ? `<br/><small style="color:#888">${esc(r.description)}</small>` : ''}
+          </td>
+          <td>${fmt.format(new Date(r.nextTrigger))}</td>
+          <td><span class="badge ${recLower === 'once' ? 'once' : ''}">${esc(r.recurrence)}</span></td>
+          <td class="actions">
+            <button class="btn-edit" data-id="${esc(r.id)}" data-title="${encodeURIComponent(r.title)}" data-desc="${encodeURIComponent(r.description || '')}" data-recurrence="${esc(r.recurrence)}" data-trigger="${esc(r.triggerAt)}">Edit</button>
+            <button class="btn-delete" data-id="${esc(r.id)}">Delete</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    document.getElementById('add-btn').addEventListener('click', () => {
+      openSetReminder();
+    });
+
+    document.getElementById('tbody').addEventListener('click', async (e) => {
+      const editBtn = e.target.closest('.btn-edit');
+      const deleteBtn = e.target.closest('.btn-delete');
+
+      if (editBtn) {
+        const { id, title, desc, recurrence, trigger } = editBtn.dataset;
+        openSetReminder({ id, title, desc, recurrence, trigger });
+        return;
+      }
+
+      if (deleteBtn) {
+        const { id } = deleteBtn.dataset;
+        if (!confirm('Delete this reminder?')) return;
+        try {
+          await invoke('delete_reminder', { id });
+          await load();
+        } catch (err) {
+          alert('Failed to delete: ' + err);
+        }
+      }
+    });
+
+    function openSetReminder(params) {
+      let url = 'set-reminder.html';
+      if (params) {
+        const qs = new URLSearchParams({
+          id: params.id || '',
+          title: params.title || '',
+          desc: params.desc || '',
+          recurrence: params.recurrence || 'Once',
+          triggerAt: params.trigger || '',
+        });
+        url += '?' + qs.toString();
+      }
+      const win = webviewWindow.WebviewWindow.getByLabel('set-reminder');
+      if (win) {
+        win.navigate(url).then(() => { win.show(); win.setFocus(); });
+      }
+    }
+
+    function esc(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // Reload when the window becomes visible (after closing set-reminder)
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) load();
+    });
+
+    load();
+  </script>
+</body>
+</html>

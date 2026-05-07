@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reminder</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      padding: 2rem;
+      text-align: center;
+      gap: 1.25rem;
+    }
+
+    .icon { font-size: 2.5rem; }
+
+    h1 {
+      font-size: 1.3rem;
+      color: #111;
+      word-break: break-word;
+    }
+
+    p {
+      color: #555;
+      font-size: .95rem;
+      max-width: 340px;
+      word-break: break-word;
+    }
+
+    button {
+      padding: .7rem 2.5rem;
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      margin-top: .5rem;
+    }
+    button:hover { background: #2563eb; }
+    button:disabled { background: #93c5fd; cursor: default; }
+  </style>
+</head>
+<body>
+  <div class="icon">⏰</div>
+  <h1 id="title">Reminder</h1>
+  <p id="desc"></p>
+  <button id="ack-btn">Acknowledge</button>
+
+  <script>
+    const { invoke, window: tauriWindow } = window.__TAURI__;
+
+    const params = new URLSearchParams(location.search);
+    const id = params.get('id') || '';
+    const title = decodeURIComponent(params.get('title') || 'Reminder');
+    const desc = decodeURIComponent(params.get('desc') || '');
+
+    document.getElementById('title').textContent = title;
+    const descEl = document.getElementById('desc');
+    if (desc) {
+      descEl.textContent = desc;
+    } else {
+      descEl.hidden = true;
+    }
+
+    document.title = title;
+
+    document.getElementById('ack-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('ack-btn');
+      btn.disabled = true;
+      try {
+        if (id) await invoke('acknowledge_reminder', { id });
+      } catch (_) {
+        // Reminder may have already been removed; close anyway.
+      }
+      tauriWindow.getCurrent().close();
+    });
+  </script>
+</body>
+</html>

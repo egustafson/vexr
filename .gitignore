@@ -1,0 +1,22 @@
+# Rust / Cargo
+target/
+Cargo.lock
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Editor
+.idea/
+.vscode/
+*.iml
+
+# Build outputs
+dist/
+node_modules/
